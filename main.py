@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 
 DEBUG = 1
-TRAIN_DATA_SIZE = 20
+TRAIN_DATA_SIZE = 200
 TEST_DATA_SIZE = 2000
 BATCH_SIZE = 4
 SAVE_PATH = './model/m.cpkt'
@@ -47,14 +47,14 @@ def data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX):
         try:
             bbox = np.fromfile(file.replace('_image.jpg', '_bbox.bin'), dtype=np.float32)
             bbox = bbox[:9]
-            bbox = bbox.reshape([-1, 9])
+            # bbox = bbox.reshape([-1, 9])
             ALL_BBOX.append(bbox)
         except FileNotFoundError:
             print('[*] bbox not found.')
             bbox = np.array([], dtype=np.float32)
         # print(bbox)
 
-    ALL_IMAGE = np.reshape(np.array(ALL_IMAGE), (TRAIN_DATA_SIZE, 1052, 1914, 1))
+    ALL_IMAGE = np.reshape(np.array(ALL_IMAGE), (TRAIN_DATA_SIZE, 1052, 1914, 3))
     print(ALL_IMAGE.shape)
     ALL_BBOX = np.array(ALL_BBOX)
     print(ALL_BBOX.shape)
@@ -63,7 +63,7 @@ def data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX):
 
 
 
-def normalize(ALL_IMAGE, ALL_MASK, ALL_NORMAL):
+def normalize(ALL_IMAGE):
     print("begin normalizing data")
     ALL_IMAGE = ALL_IMAGE / 255
 
@@ -85,10 +85,13 @@ def unet(X_train):
         padding='same',
         activation=tf.nn.relu)
 
+    flatten = tf.layers.flatten(
+        inputs=conv2)
+
     dense1 = tf.layers.dense(
-        inputs = conv2,
+        inputs = flatten,
         units = 9,
-        activation=tf.nn.relu,
+        activation=tf.nn.relu
         # use_bias=True,
         # kernel_initializer=None,
         # bias_initializer=tf.zeros_initializer(),
@@ -180,10 +183,10 @@ def main():
     print('building model...')
     ALL_IMAGE, ALL_BBOX = data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX)
     #Not sure if we should normalize
-    normalize(ALL_IMAGE, ALL_BBOX)
+    normalize(ALL_IMAGE)
     # placeholders
     images = tf.placeholder(tf.float32, [None, 1052, 1914, 3])
-    bbox = tf.placeholder(tf.float32, [None, 1, 9])
+    bbox = tf.placeholder(tf.float32, [None, 9])
     pred_model = unet(images)
     #calculate loss
     loss = find_loss(pred_model, bbox)
@@ -199,7 +202,7 @@ def main():
 
     t_images = tf.placeholder(tf.float32, [None, 1052, 1914, 3])
     #TODO
-    prediction(images, pred_model)
+    # prediction(images, pred_model)
 
 
 
