@@ -2,42 +2,74 @@ import tensorflow as tf
 import numpy as np
 import os
 import imageio
+from glob import glob
 from scipy.misc import imread, imresize
+import matplotlib.pyplot as plt
 
-TRAIN_DATA_SIZE = 20000
+
+DEBUG = 1
+TRAIN_DATA_SIZE = 20
 TEST_DATA_SIZE = 2000
-BATCH_SIZE = 128
+BATCH_SIZE = 4
 SAVE_PATH = './model/m.cpkt'
 RESTORE = True
 
-def data_load(Image_folder, Mask_folder, Normal_folder, ALL_IMAGE, ALL_MASK, ALL_NORMAL):
-    print("begin loading data")
-    image_list = os.listdir(Image_folder)[0:TRAIN_DATA_SIZE]
-    for name in image_list:
-        img = imread(os.path.join(Image_folder, name))[:,:,0]
-        mask = imread(os.path.join(Mask_folder, name))
-        normal = imread(os.path.join(Normal_folder, name))
+
+# def data_load(Image_folder, Mask_folder, Normal_folder, ALL_IMAGE, ALL_MASK, ALL_NORMAL):
+#     print("begin loading data")
+#     image_list = os.listdir(Image_folder)[0:TRAIN_DATA_SIZE]
+#     for name in image_list:
+#         img = imread(os.path.join(Image_folder, name))[:,:,0]
+#         mask = imread(os.path.join(Mask_folder, name))
+#         normal = imread(os.path.join(Normal_folder, name))
+#         ALL_IMAGE.append(img)
+#         ALL_MASK.append(mask)
+#         ALL_NORMAL.append(normal)
+#     ALL_IMAGE = np.reshape(np.array(ALL_IMAGE), (TRAIN_DATA_SIZE, 128, 128, 1))
+#     ALL_MASK = np.reshape(np.array(ALL_MASK), (TRAIN_DATA_SIZE, 128, 128, 1))
+#     ALL_NORMAL = np.array(ALL_NORMAL)
+#     print("shape of container!")
+#     print(type(ALL_IMAGE))
+#     print(ALL_MASK.shape)
+#     print(ALL_NORMAL.shape)
+#     return ALL_IMAGE, ALL_MASK, ALL_NORMAL
+
+def data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX):
+    print("Begin loading data...")
+    if DEBUG:
+        image_files = image_files[:TRAIN_DATA_SIZE]
+    for file in image_files:
+        # Read images
+        img = plt.imread(file)
         ALL_IMAGE.append(img)
-        ALL_MASK.append(mask)
-        ALL_NORMAL.append(normal)
-    ALL_IMAGE = np.reshape(np.array(ALL_IMAGE), (TRAIN_DATA_SIZE, 128, 128, 1))
-    ALL_MASK = np.reshape(np.array(ALL_MASK), (TRAIN_DATA_SIZE, 128, 128, 1))
-    ALL_NORMAL = np.array(ALL_NORMAL)
-    print("shape of container!")
-    print(type(ALL_IMAGE))
-    print(ALL_MASK.shape)
-    print(ALL_NORMAL.shape)
-    return ALL_IMAGE, ALL_MASK, ALL_NORMAL
+
+        # Read bbox
+        try:
+            bbox = np.fromfile(file.replace('_image.jpg', '_bbox.bin'), dtype=np.float32)
+            bbox = bbox[:9]
+            bbox = bbox.reshape([-1, 9])
+            ALL_BBOX.append(bbox)
+        except FileNotFoundError:
+            print('[*] bbox not found.')
+            bbox = np.array([], dtype=np.float32)
+        # print(bbox)
+
+    ALL_IMAGE = np.reshape(np.array(ALL_IMAGE), (TRAIN_DATA_SIZE, 1052, 1914, 1))
+    print(ALL_IMAGE.shape)
+    ALL_BBOX = np.array(ALL_BBOX)
+    print(ALL_BBOX.shape)
+
+    return ALL_IMAGE, ALL_BBOX
+
+
 
 def normalize(ALL_IMAGE, ALL_MASK, ALL_NORMAL):
     print("begin normalizing data")
     ALL_IMAGE = ALL_IMAGE / 255
-    ALL_NORMAL = ((ALL_NORMAL / 255) - 0.5) * 2 # -1 to 1
-    ALL_MASK = ALL_MASK / 255
 
 
 def unet(X_train):
-    conv1 = conv1 = tf.layers.conv2d(
+    conv1 = tf.layers.conv2d(
         inputs=X_train,
         filters=64,
         kernel_size=[3,3],
@@ -52,29 +84,48 @@ def unet(X_train):
         strides=(1, 1),
         padding='same',
         activation=tf.nn.relu)
-    return conv2
 
+    dense1 = tf.layers.dense(
+        inputs = conv2,
+        units = 9,
+        activation=tf.nn.relu,
+        # use_bias=True,
+        # kernel_initializer=None,
+        # bias_initializer=tf.zeros_initializer(),
+        # kernel_regularizer=None,
+        # bias_regularizer=None,
+        # activity_regularizer=None,
+        # kernel_constraint=None,
+        # bias_constraint=None,
+        # trainable=True,
+        # name=None,
+        # reuse=None
+    )
 
-def find_loss(pred_normal, mask, true_normal):
+    # Add a linear layer and let the output to be 1*9
+    return dense1
+
+#TODO
+def find_loss(pred_bbox, true_bbox):
     # take care of mask
-    loss = tf.losses.mean_squared_error(tf.multiply(true_normal, mask), tf.multiply(pred_normal, mask))
+    loss = tf.losses.mean_squared_error(pred_bbox, true_bbox)
     return loss
 
 def optimizer(loss):
     # return a tf operation
     return tf.train.AdamOptimizer(learning_rate=0.01).minimize(loss)
 
+#TODO
 def train_cnn(
-    sess, saver, images, mask, normal, loss, train_op, ALL_IMAGE, ALL_MASK, ALL_NORMAL):
-    
+    sess, saver, images, bbox, loss, train_op, ALL_IMAGE, ALL_BBOX):
+
     iterations = int(TRAIN_DATA_SIZE/BATCH_SIZE)
 
     for batch_index in range(iterations):
         batch_images = ALL_IMAGE[BATCH_SIZE*(batch_index):BATCH_SIZE*(batch_index + 1)]
-        batch_normal = ALL_NORMAL[BATCH_SIZE*(batch_index):BATCH_SIZE*(batch_index + 1)]
-        batch_mask = ALL_MASK[BATCH_SIZE*(batch_index):BATCH_SIZE*(batch_index + 1)]
-        sess.run(train_op, feed_dict={images: batch_images, mask: batch_mask, normal: batch_normal})
-        cur_loss = sess.run(loss, feed_dict={images: batch_images, mask: batch_mask, normal: batch_normal})
+        batch_bbox = ALL_BBOX[BATCH_SIZE*(batch_index):BATCH_SIZE*(batch_index + 1)]
+        sess.run(train_op, feed_dict={images: batch_images, bbox: batch_bbox})
+        cur_loss = sess.run(loss, feed_dict={images: batch_images, bbox: batch_bbox})
         print("loss for batch {} is {}".format(batch_index, cur_loss))
 
     saver.save(sess, SAVE_PATH)
@@ -118,23 +169,24 @@ def prediction(t_images, t_mask, pred_model):
 
 
 def main():
-    Image_folder = './train/color/'
-    Mask_folder = './train/mask/'
-    Normal_folder = './train/normal/'
-    
+    image_files = glob('deploy/trainval/*/*_image.jpg')
+    bbox_files = glob('deploy/trainval/*/*_bbox.bin')
+    # Image_folder = './train/color/'
+    # Mask_folder = './train/mask/'
+    # Normal_folder = './train/normal/'
+
     ALL_IMAGE = []
-    ALL_MASK = []
-    ALL_NORMAL = []
+    ALL_BBOX = []
     print('building model...')
-    ALL_IMAGE, ALL_MASK, ALL_NORMAL = data_load(Image_folder, Mask_folder, Normal_folder, ALL_IMAGE, ALL_MASK, ALL_NORMAL)
-    normalize(ALL_IMAGE, ALL_MASK, ALL_NORMAL)
+    ALL_IMAGE, ALL_BBOX = data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX)
+    #Not sure if we should normalize
+    normalize(ALL_IMAGE, ALL_BBOX)
     # placeholders
-    images = tf.placeholder(tf.float32, [None, 128, 128, 1])
-    mask = tf.placeholder(tf.float32, [None, 128, 128, 1])
-    normal = tf.placeholder(tf.float32, [None, 128, 128, 3])
+    images = tf.placeholder(tf.float32, [None, 1052, 1914, 3])
+    bbox = tf.placeholder(tf.float32, [None, 1, 9])
     pred_model = unet(images)
     #calculate loss
-    loss = find_loss(pred_model, mask, normal)
+    loss = find_loss(pred_model, bbox)
     # optimizer
     train_op = optimizer(loss)
     saver = tf.train.Saver()
@@ -142,11 +194,12 @@ def main():
     with tf.Session() as sess:
         if RESTORE:
             sess.run(tf.global_variables_initializer())
-        train_cnn(sess, saver, images, mask, normal, loss, train_op, ALL_IMAGE, ALL_MASK, ALL_NORMAL)
+        #TODO
+        train_cnn(sess, saver, images, bbox, loss, train_op, ALL_IMAGE, ALL_BBOX)
 
-    t_images = tf.placeholder(tf.float32, [None, 128, 128, 1])
-    t_mask = tf.placeholder(tf.float32, [None, 128, 128, 1])
-    prediction(images, mask, pred_model)
+    t_images = tf.placeholder(tf.float32, [None, 1052, 1914, 3])
+    #TODO
+    prediction(images, pred_model)
 
 
 
