@@ -5,18 +5,22 @@ from glob import glob
 from scipy.misc import imread, imresize
 import matplotlib.pyplot as plt
 import cv2
-
+from random import randint
+from keras.applications.vgg19 import VGG19
+from keras.applications.vgg19 import preprocess_input, decode_predictions
+from keras.preprocessing import image
+from keras.models import Model
 
 DEBUG = 1
 if DEBUG:
-    TRAIN_DATA_SIZE = 2000
+    TRAIN_DATA_SIZE = 200
     TEST_DATA_SIZE = 200
-    epoch = 5
+    epoch = 10
 else:
     TRAIN_DATA_SIZE = 7573
     TEST_DATA_SIZE = 2631
-    epoch = 10
-BATCH_SIZE = 64
+    epoch = 50
+BATCH_SIZE = 128
 SAVE_PATH = './model/m.cpkt'
 RESTORE = True
 IMGSIZE = 224
@@ -41,7 +45,7 @@ IMGSIZE = 224
 #     print(ALL_NORMAL.shape)
 #     return ALL_IMAGE, ALL_MASK, ALL_NORMAL
 
-def data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX):
+def data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX, base_model):
     print("Begin loading data...")
     if DEBUG:
         image_files = image_files[:TRAIN_DATA_SIZE]
@@ -49,7 +53,9 @@ def data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX):
         # Read images
         img = cv2.imread(file)
         img = cv2.resize(img,(IMGSIZE,IMGSIZE)).astype(np.float32)
+        img -= [103.939, 116.779, 123.68]
         img = img / 255
+        img = load_pretrained_vgg19_fc2(img, base_model)
         ALL_IMAGE.append(img)
 
         # Read bbox
@@ -63,7 +69,7 @@ def data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX):
             bbox = np.array([], dtype=np.float32)
         # print(bbox)
 
-    ALL_IMAGE = np.reshape(np.array(ALL_IMAGE), (TRAIN_DATA_SIZE, IMGSIZE, IMGSIZE, 3))
+    ALL_IMAGE = np.reshape(np.array(ALL_IMAGE), (TRAIN_DATA_SIZE, 1, 4096))
     print(ALL_IMAGE.shape)
     ALL_BBOX = np.array(ALL_BBOX)
     print(ALL_BBOX.shape)
@@ -82,142 +88,142 @@ def normalize(x):
 
 
 def vgg16net(X_train):
-    conv1 = tf.layers.conv2d(
-        inputs=X_train,
-        filters=64,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv1 = tf.layers.conv2d(
+    #     inputs=X_train,
+    #     filters=64,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    conv2 = tf.layers.conv2d(
-        inputs=conv1,
-        filters=128,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv2 = tf.layers.conv2d(
+    #     inputs=conv1,
+    #     filters=64,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    maxpool1 = tf.nn.max_pool(
-        conv2, 
-        ksize=[1, 2, 2, 1], 
-        strides=[1, 2, 2, 1], 
-        padding='SAME')
+    # maxpool1 = tf.nn.max_pool(
+    #     conv2, 
+    #     ksize=[1, 2, 2, 1], 
+    #     strides=[1, 2, 2, 1], 
+    #     padding='SAME')
 
-    conv3 = tf.layers.conv2d(
-        inputs=maxpool1,
-        filters=256,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv3 = tf.layers.conv2d(
+    #     inputs=maxpool1,
+    #     filters=128,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    conv4 = tf.layers.conv2d(
-        inputs=conv3,
-        filters=256,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv4 = tf.layers.conv2d(
+    #     inputs=conv3,
+    #     filters=128,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    maxpool2 = tf.nn.max_pool(
-        conv3, 
-        ksize=[1, 2, 2, 1], 
-        strides=[1, 2, 2, 1], 
-        padding='SAME')
+    # maxpool2 = tf.nn.max_pool(
+    #     conv4, 
+    #     ksize=[1, 2, 2, 1], 
+    #     strides=[1, 2, 2, 1], 
+    #     padding='SAME')
 
-    conv5 = tf.layers.conv2d(
-        inputs=maxpool2,
-        filters=256,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv5 = tf.layers.conv2d(
+    #     inputs=maxpool2,
+    #     filters=256,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    conv6 = tf.layers.conv2d(
-        inputs=conv5,
-        filters=256,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv6 = tf.layers.conv2d(
+    #     inputs=conv5,
+    #     filters=256,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    conv7 = tf.layers.conv2d(
-        inputs=conv6,
-        filters=256,
-        kernel_size=[1,1],
-        strides=(1, 1),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv7 = tf.layers.conv2d(
+    #     inputs=conv6,
+    #     filters=256,
+    #     kernel_size=[1,1],
+    #     strides=(1, 1),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    maxpool3 = tf.nn.max_pool(
-        conv7, 
-        ksize=[1, 2, 2, 1], 
-        strides=[1, 2, 2, 1], 
-        padding='SAME')
+    # maxpool3 = tf.nn.max_pool(
+    #     conv7, 
+    #     ksize=[1, 2, 2, 1], 
+    #     strides=[1, 2, 2, 1], 
+    #     padding='SAME')
 
-    conv8 = tf.layers.conv2d(
-        inputs=maxpool3,
-        filters=256,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv8 = tf.layers.conv2d(
+    #     inputs=maxpool3,
+    #     filters=512,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    conv9 = tf.layers.conv2d(
-        inputs=conv8,
-        filters=256,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv9 = tf.layers.conv2d(
+    #     inputs=conv8,
+    #     filters=512,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    conv10 = tf.layers.conv2d(
-        inputs=conv9,
-        filters=256,
-        kernel_size=[1,1],
-        strides=(1, 1),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv10 = tf.layers.conv2d(
+    #     inputs=conv9,
+    #     filters=512,
+    #     kernel_size=[1,1],
+    #     strides=(1, 1),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    maxpool4 = tf.nn.max_pool(
-        conv10, 
-        ksize=[1, 2, 2, 1], 
-        strides=[1, 2, 2, 1], 
-        padding='SAME')
+    # maxpool4 = tf.nn.max_pool(
+    #     conv10, 
+    #     ksize=[1, 2, 2, 1], 
+    #     strides=[1, 2, 2, 1], 
+    #     padding='SAME')
 
-    conv11 = tf.layers.conv2d(
-        inputs=maxpool4,
-        filters=256,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv11 = tf.layers.conv2d(
+    #     inputs=maxpool4,
+    #     filters=512,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    conv12 = tf.layers.conv2d(
-        inputs=conv11,
-        filters=256,
-        kernel_size=[3,3],
-        strides=(2, 2),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv12 = tf.layers.conv2d(
+    #     inputs=conv11,
+    #     filters=512,
+    #     kernel_size=[3,3],
+    #     strides=(2, 2),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    conv13 = tf.layers.conv2d(
-        inputs=conv12,
-        filters=256,
-        kernel_size=[1,1],
-        strides=(1, 1),
-        padding='same',
-        activation=tf.nn.relu)
+    # conv13 = tf.layers.conv2d(
+    #     inputs=conv12,
+    #     filters=512,
+    #     kernel_size=[1,1],
+    #     strides=(1, 1),
+    #     padding='same',
+    #     activation=tf.nn.relu)
 
-    maxpool5 = tf.nn.max_pool(
-        conv13, 
-        ksize=[1, 2, 2, 1], 
-        strides=[1, 2, 2, 1], 
-        padding='SAME')
+    # maxpool5 = tf.nn.max_pool(
+    #     conv13, 
+    #     ksize=[1, 2, 2, 1], 
+    #     strides=[1, 2, 2, 1], 
+    #     padding='SAME')
 
     flatten = tf.layers.flatten(
-        inputs=maxpool5)
+        inputs=X_train)
 
     dense1 = tf.layers.dense(
         inputs = flatten,
@@ -237,12 +243,18 @@ def vgg16net(X_train):
     )
 
     dense2 = tf.layers.dense(
-        inputs = flatten,
+        inputs = dense1,
+        units = 1000,
+        activation=tf.nn.relu
+    )
+
+    dense3 = tf.layers.dense(
+        inputs = dense2,
         units = 3,
         activation=tf.nn.softmax
     )
 
-    return dense2
+    return dense3
 
 #TODO
 def find_loss(pred_bbox, true_bbox):
@@ -296,7 +308,7 @@ def train_cnn(
     return sess
 
 
-def prediction(images, pred_model, sess):
+def prediction(images, pred_model, sess, base_model):
     test_image_files = glob('deploy/test/*/*_image.jpg')
     if DEBUG:
         test_image_files = test_image_files[:TEST_DATA_SIZE]
@@ -307,10 +319,12 @@ def prediction(images, pred_model, sess):
         # Read images
         img = cv2.imread(file)
         img = cv2.resize(img,(IMGSIZE,IMGSIZE)).astype(np.float32)
+        img -= [103.939, 116.779, 123.68]
         img = img / 255
+        img = load_pretrained_vgg19_fc2(img, base_model)
         TEST_IMAGE.append(img)
 
-    TEST_IMAGE = np.reshape(np.array(TEST_IMAGE), (TEST_DATA_SIZE, IMGSIZE, IMGSIZE, 3))
+    TEST_IMAGE = np.reshape(np.array(TEST_IMAGE), (TEST_DATA_SIZE, 1, 4096))
     # normalize(TEST_IMAGE)
 
     print(TEST_IMAGE.shape)
@@ -332,6 +346,21 @@ def prediction(images, pred_model, sess):
     return pred_labels
 
 
+def load_pretrained_vgg19_fc2(img, base_model):
+    # pre-process the image
+    # img = image.load_img('./data/peacock.jpg', target_size=(224, 224))
+    img = image.img_to_array(img)
+    img = np.expand_dims(img, axis=0)
+    img = preprocess_input(img)
+
+    # define model from base model for feature extraction from fc2 layer
+    model = Model(input=base_model.input, output=base_model.get_layer('fc2').output)
+    # obtain the outpur of fc2 layer
+    fc2_features = model.predict(img)
+
+    return fc2_features
+
+
 def main():
     image_files = glob('deploy/trainval/*/*_image.jpg')
     bbox_files = glob('deploy/trainval/*/*_bbox.bin')
@@ -339,6 +368,9 @@ def main():
     # Image_folder = './train/color/'
     # Mask_folder = './train/mask/'
     # Normal_folder = './train/normal/'
+
+    # load pre-trained model
+    base_model = VGG19(weights='imagenet')
 
     ALL_IMAGE = []
     ALL_BBOX = []
@@ -351,6 +383,7 @@ def main():
     for line in lines[1:]:
         TEMP_LABEL = [0,0,0]
         TEMP_LABEL[int(line.split(',')[1])] = 1
+        # TEMP_LABEL[randint(0,2)] = 1
         ALL_LABEL.append(TEMP_LABEL)
     ALL_LABEL = np.array(ALL_LABEL)
     if DEBUG:
@@ -358,11 +391,11 @@ def main():
     print(ALL_LABEL.shape)
 
     print('building model...')
-    ALL_IMAGE, ALL_BBOX = data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX)
+    ALL_IMAGE, ALL_BBOX = data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX, base_model)
     #Not sure if we should normalize
     # normalize(ALL_IMAGE)
     # placeholders
-    images = tf.placeholder(tf.float32, [None, IMGSIZE, IMGSIZE, 3])
+    images = tf.placeholder(tf.float32, [None, 1, 4096])
     bbox = tf.placeholder(tf.float32, [None, 9])
     labels = tf.placeholder(tf.float32, [None, 3])
 
@@ -384,7 +417,7 @@ def main():
 
         # t_images = tf.placeholder(tf.float32, [None, IMGSIZE, IMGSIZE, 3])
     #TODO
-        pred_labels = prediction(images, pred_model, sess)
+        pred_labels = prediction(images, pred_model, sess, base_model)
 
     # print(pred_labels.shape)
     label_output = ''
