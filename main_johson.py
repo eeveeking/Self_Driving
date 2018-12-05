@@ -13,14 +13,14 @@ from keras.models import Model
 
 DEBUG = 1
 if DEBUG:
-    TRAIN_DATA_SIZE = 200
-    TEST_DATA_SIZE = 200
+    TRAIN_DATA_SIZE = 2001
+    TEST_DATA_SIZE = 600
     epoch = 10
 else:
     TRAIN_DATA_SIZE = 7573
     TEST_DATA_SIZE = 2631
     epoch = 50
-BATCH_SIZE = 128
+BATCH_SIZE = 16
 SAVE_PATH = './model/m.cpkt'
 RESTORE = True
 IMGSIZE = 224
@@ -105,9 +105,9 @@ def vgg16net(X_train):
     #     activation=tf.nn.relu)
 
     # maxpool1 = tf.nn.max_pool(
-    #     conv2, 
-    #     ksize=[1, 2, 2, 1], 
-    #     strides=[1, 2, 2, 1], 
+    #     conv2,
+    #     ksize=[1, 2, 2, 1],
+    #     strides=[1, 2, 2, 1],
     #     padding='SAME')
 
     # conv3 = tf.layers.conv2d(
@@ -127,9 +127,9 @@ def vgg16net(X_train):
     #     activation=tf.nn.relu)
 
     # maxpool2 = tf.nn.max_pool(
-    #     conv4, 
-    #     ksize=[1, 2, 2, 1], 
-    #     strides=[1, 2, 2, 1], 
+    #     conv4,
+    #     ksize=[1, 2, 2, 1],
+    #     strides=[1, 2, 2, 1],
     #     padding='SAME')
 
     # conv5 = tf.layers.conv2d(
@@ -157,9 +157,9 @@ def vgg16net(X_train):
     #     activation=tf.nn.relu)
 
     # maxpool3 = tf.nn.max_pool(
-    #     conv7, 
-    #     ksize=[1, 2, 2, 1], 
-    #     strides=[1, 2, 2, 1], 
+    #     conv7,
+    #     ksize=[1, 2, 2, 1],
+    #     strides=[1, 2, 2, 1],
     #     padding='SAME')
 
     # conv8 = tf.layers.conv2d(
@@ -187,9 +187,9 @@ def vgg16net(X_train):
     #     activation=tf.nn.relu)
 
     # maxpool4 = tf.nn.max_pool(
-    #     conv10, 
-    #     ksize=[1, 2, 2, 1], 
-    #     strides=[1, 2, 2, 1], 
+    #     conv10,
+    #     ksize=[1, 2, 2, 1],
+    #     strides=[1, 2, 2, 1],
     #     padding='SAME')
 
     # conv11 = tf.layers.conv2d(
@@ -217,9 +217,9 @@ def vgg16net(X_train):
     #     activation=tf.nn.relu)
 
     # maxpool5 = tf.nn.max_pool(
-    #     conv13, 
-    #     ksize=[1, 2, 2, 1], 
-    #     strides=[1, 2, 2, 1], 
+    #     conv13,
+    #     ksize=[1, 2, 2, 1],
+    #     strides=[1, 2, 2, 1],
     #     padding='SAME')
 
     flatten = tf.layers.flatten(
@@ -228,7 +228,7 @@ def vgg16net(X_train):
     dense1 = tf.layers.dense(
         inputs = flatten,
         units = 4096,
-        activation=tf.nn.relu
+        activation=tf.nn.elu
         # use_bias=True,
         # kernel_initializer=None,
         # bias_initializer=tf.zeros_initializer(),
@@ -244,27 +244,33 @@ def vgg16net(X_train):
 
     dense2 = tf.layers.dense(
         inputs = dense1,
-        units = 1000,
-        activation=tf.nn.relu
+        units = 4096,
+        activation=tf.nn.elu
     )
 
     dense3 = tf.layers.dense(
         inputs = dense2,
+        units = 1000,
+        activation=tf.nn.elu
+    )
+
+    dense4 = tf.layers.dense(
+        inputs = dense3,
         units = 3,
         activation=tf.nn.softmax
     )
 
-    return dense3
+    return dense4
 
 #TODO
-def find_loss(pred_bbox, true_bbox):
-    # take care of mask
-    loss = tf.losses.mean_squared_error(pred_bbox, true_bbox)
+def find_loss(pred_label, true_label):
+    # loss = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits(logits=pred_label, labels=true_label) )
+    loss = tf.losses.mean_squared_error(pred_label, true_label)
     return loss
 
 def optimizer(loss):
     # return a tf operation
-    return tf.train.AdamOptimizer(learning_rate=0.1).minimize(loss)
+    return tf.train.AdamOptimizer(learning_rate=0.001).minimize(loss)
 
 # def train_cnn(
 #     sess, saver, images, bbox, loss, train_op, ALL_IMAGE, ALL_BBOX):
@@ -301,14 +307,12 @@ def train_cnn(
         _, cur_loss = sess.run([train_op, loss], feed_dict={images: batch_images, labels: batch_labels})
         # cur_loss = sess.run(loss, feed_dict={images: batch_images, bbox: batch_bbox})
         print("loss for batch {} is {}".format(batch_index, cur_loss))
-    
-    # saver.save(sess, SAVE_PATH)
-    
+
     # tf.saved_model.simple_save(sess, SAVE_PATH)
     return sess
 
 
-def prediction(images, pred_model, sess, base_model):
+def prediction(t_images, pred_model, base_model):
     test_image_files = glob('deploy/test/*/*_image.jpg')
     if DEBUG:
         test_image_files = test_image_files[:TEST_DATA_SIZE]
@@ -333,14 +337,18 @@ def prediction(images, pred_model, sess, base_model):
 
     print("begin predicting normal")
     pred_labels = np.array([])
-    # with tf.Session() as sess:
-    #     # sess.run(tf.global_variables_initializer())
-        # saver = tf.train.Saver()
-        # saver.restore(sess, SAVE_PATH)
-    for batch_index in range(iterations):
-        batch_images = TEST_IMAGE[BATCH_SIZE*(batch_index):BATCH_SIZE*(batch_index + 1)]
-        batch_labels = sess.run(pred_model, feed_dict={images: batch_images})
-        pred_labels = np.append(pred_labels, batch_labels)
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        for batch_index in range(iterations):
+            print(batch_index)
+            saver = tf.train.Saver()
+            saver.restore(sess, SAVE_PATH)
+
+            batch_images = TEST_IMAGE[BATCH_SIZE*(batch_index):BATCH_SIZE*(batch_index + 1)]
+            batch_labels = sess.run(pred_model, feed_dict={t_images: batch_images})
+            pred_labels = np.append(pred_labels, batch_labels)
+            print(batch_index)
+            saver.save(sess, SAVE_PATH)
 
     # print(pred_labels)
     return pred_labels
@@ -392,8 +400,7 @@ def main():
 
     print('building model...')
     ALL_IMAGE, ALL_BBOX = data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX, base_model)
-    #Not sure if we should normalize
-    # normalize(ALL_IMAGE)
+    
     # placeholders
     images = tf.placeholder(tf.float32, [None, 1, 4096])
     bbox = tf.placeholder(tf.float32, [None, 9])
@@ -414,10 +421,12 @@ def main():
         #     train_cnn(sess, saver, images, bbox, loss, train_op, ALL_IMAGE, ALL_BBOX)
         for i in range(epoch):
             train_cnn(sess, saver, images, labels, loss, train_op, ALL_IMAGE, ALL_LABEL)
+        saver.save(sess, SAVE_PATH)
 
-        # t_images = tf.placeholder(tf.float32, [None, IMGSIZE, IMGSIZE, 3])
+
+        t_images = tf.placeholder(tf.float32, [None, 1, 4096])
     #TODO
-        pred_labels = prediction(images, pred_model, sess, base_model)
+        pred_labels = prediction(t_images, pred_model, base_model)
 
     # print(pred_labels.shape)
     label_output = ''
