@@ -13,6 +13,22 @@ import time
 import os
 import copy
 from glob import glob
+import cv2
+
+
+DEBUG = 1
+VAL_DATA_SIZE = 600
+TRAIN_DATA_SIZE = 2000
+TEST_DATA_SIZE = 600
+
+
+def preprocess(img):
+	"Preprocess."
+	img = cv2.resize(img,(IMGSIZE,IMGSIZE)).astype(np.float32)
+	img -= [103.939, 116.779, 123.68]
+	img = img / 255
+
+	return img
 
 
 def data_load():
@@ -31,7 +47,7 @@ def data_load():
 	        # Here, we randomly crop the image to 224x224 and
 	        # randomly flip it horizontally.
 	        transforms.Resize(256),
-			transform.RandomResizedCrop(224),
+			transforms.RandomResizedCrop(224),
 	        transforms.ToTensor(),
 	    ]),
 	    VAL: transforms.Compose([
@@ -46,13 +62,24 @@ def data_load():
 	    ])
 	}
 
-	image_datasets = {
-	    x: datasets.ImageFolder(
-	        os.path.join(data_dir, x),
-	        transform=data_transforms[x]
-	    )
-	    for x in [TRAIN, VAL, TEST]
-	}
+	if DEBUG:
+		VAL_FILE = TRAIN_FILE[5000:5000+VAL_DATA_SIZE]
+		TRAIN_FILE = TRAIN_FILE[:TRAIN_DATA_SIZE]
+		TEST_FILE = TEST_FILE[1000:1000+TEST_DATA_SIZE]
+
+	image_datasets = {}
+	image_datasets[TRAIN] = [preprocess(cv2.imread(fname)) for fname in TRAIN_FILE]
+	image_datasets[VAL] = [preprocess(cv2.imread(fname)) for fname in VAL_FILE]
+	image_datasets[TEST] = [preprocess(cv2.imread(fname)) for fname in TEST_FILE]
+
+
+	# image_datasets = {
+	#     x: datasets.ImageFolder(
+	#         os.path.join(data_dir, x),
+	#         transform=data_transforms[x]
+	#     )
+	#     for x in [TRAIN, VAL, TEST]
+	# }
 
 	dataloaders = {
 	    x: torch.utils.data.DataLoader(
