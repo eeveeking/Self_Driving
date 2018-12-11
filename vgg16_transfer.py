@@ -69,10 +69,25 @@ def data_load():
 		TRAIN_FILE = TRAIN_FILE[:TRAIN_DATA_SIZE]
 		TEST_FILE = TEST_FILE[1000:1000+TEST_DATA_SIZE]
 
+    # Read labels
+    with open('labels.csv', 'r') as f:
+        lines = f.readlines()
+    lines = [line.rstrip('\n') for line in lines]
+    ALL_LABEL = []
+    for line in lines[1:]:
+        # TEMP_LABEL = [0,0,0]
+        # TEMP_LABEL[int(line.split(',')[1])] = 1
+        # TEMP_LABEL[randint(0,2)] = 1
+        ALL_LABEL.append(int(line.split(',')[1]))
+    ALL_LABEL = np.array(ALL_LABEL)
+    if DEBUG:
+        TRAIN_LABEL = ALL_LABEL[:TRAIN_DATA_SIZE]
+		VAL_LABEL = ALL_LABEL[5000:5000+VAL_DATA_SIZE]
+
 	image_datasets = {}
 	print("Preprocessing...")
-	image_datasets[TRAIN] = [preprocess(cv2.imread(fname)) for fname in TRAIN_FILE]
-	image_datasets[VAL] = [preprocess(cv2.imread(fname)) for fname in VAL_FILE]
+	image_datasets[TRAIN] = [(preprocess(cv2.imread(TRAIN_FILE[idx])), TRAIN_LABEL[idx]) for idx in range(len(TRAIN_FILE))]
+	image_datasets[VAL] = [(preprocess(cv2.imread(VAL_FILE[idx])), VAL_LABEL[idx]) for idx in range(len(VAL_FILE))]
 	image_datasets[TEST] = [preprocess(cv2.imread(fname)) for fname in TEST_FILE]
 	print("Preprocessing done...")
 
