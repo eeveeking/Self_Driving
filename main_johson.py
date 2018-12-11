@@ -10,12 +10,16 @@ from keras.applications.vgg19 import VGG19
 from keras.applications.vgg19 import preprocess_input, decode_predictions
 from keras.preprocessing import image
 from keras.models import Model
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import LinearSVC
 
-DEBUG = 1
+DEBUG = 0
 if DEBUG:
     TRAIN_DATA_SIZE = 2001
     TEST_DATA_SIZE = 600
-    epoch = 10
+    epoch = 500
+    TEST_START = 1000
 else:
     TRAIN_DATA_SIZE = 7573
     TEST_DATA_SIZE = 2631
@@ -55,7 +59,7 @@ def data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX, base_model):
         img = cv2.resize(img,(IMGSIZE,IMGSIZE)).astype(np.float32)
         img -= [103.939, 116.779, 123.68]
         img = img / 255
-        img = load_pretrained_vgg19_fc2(img, base_model)
+        img = load_pretrained_vgg19_fc2(img, base_model)[0]
         ALL_IMAGE.append(img)
 
         # Read bbox
@@ -69,7 +73,7 @@ def data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX, base_model):
             bbox = np.array([], dtype=np.float32)
         # print(bbox)
 
-    ALL_IMAGE = np.reshape(np.array(ALL_IMAGE), (TRAIN_DATA_SIZE, 1, 4096))
+    ALL_IMAGE = np.reshape(np.array(ALL_IMAGE), (TRAIN_DATA_SIZE, 4096))
     print(ALL_IMAGE.shape)
     ALL_BBOX = np.array(ALL_BBOX)
     print(ALL_BBOX.shape)
@@ -228,7 +232,7 @@ def vgg16net(X_train):
     dense1 = tf.layers.dense(
         inputs = flatten,
         units = 4096,
-        activation=tf.nn.elu
+        activation=tf.nn.sigmoid
         # use_bias=True,
         # kernel_initializer=None,
         # bias_initializer=tf.zeros_initializer(),
@@ -245,13 +249,13 @@ def vgg16net(X_train):
     dense2 = tf.layers.dense(
         inputs = dense1,
         units = 4096,
-        activation=tf.nn.elu
+        activation=tf.nn.sigmoid
     )
 
     dense3 = tf.layers.dense(
         inputs = dense2,
         units = 1000,
-        activation=tf.nn.elu
+        activation=tf.nn.sigmoid
     )
 
     dense4 = tf.layers.dense(
@@ -270,7 +274,7 @@ def find_loss(pred_label, true_label):
 
 def optimizer(loss):
     # return a tf operation
-    return tf.train.AdamOptimizer(learning_rate=0.001).minimize(loss)
+    return tf.train.AdamOptimizer(learning_rate=0.01).minimize(loss)
 
 # def train_cnn(
 #     sess, saver, images, bbox, loss, train_op, ALL_IMAGE, ALL_BBOX):
@@ -312,26 +316,7 @@ def train_cnn(
     return sess
 
 
-def prediction(t_images, pred_model, base_model):
-    test_image_files = glob('deploy/test/*/*_image.jpg')
-    if DEBUG:
-        test_image_files = test_image_files[:TEST_DATA_SIZE]
-    TEST_IMAGE = []
-    print("begin loading test data")
-
-    for file in test_image_files:
-        # Read images
-        img = cv2.imread(file)
-        img = cv2.resize(img,(IMGSIZE,IMGSIZE)).astype(np.float32)
-        img -= [103.939, 116.779, 123.68]
-        img = img / 255
-        img = load_pretrained_vgg19_fc2(img, base_model)
-        TEST_IMAGE.append(img)
-
-    TEST_IMAGE = np.reshape(np.array(TEST_IMAGE), (TEST_DATA_SIZE, 1, 4096))
-    # normalize(TEST_IMAGE)
-
-    print(TEST_IMAGE.shape)
+def prediction(t_images, pred_model, base_model, TEST_IMAGE):
     iterations = int(TEST_DATA_SIZE/BATCH_SIZE) + 1
 
 
@@ -392,7 +377,7 @@ def main():
         TEMP_LABEL = [0,0,0]
         TEMP_LABEL[int(line.split(',')[1])] = 1
         # TEMP_LABEL[randint(0,2)] = 1
-        ALL_LABEL.append(TEMP_LABEL)
+        ALL_LABEL.append(int(line.split(',')[1]))
     ALL_LABEL = np.array(ALL_LABEL)
     if DEBUG:
         ALL_LABEL = ALL_LABEL[:TRAIN_DATA_SIZE]
@@ -401,44 +386,99 @@ def main():
     print('building model...')
     ALL_IMAGE, ALL_BBOX = data_load(image_files, bbox_files, ALL_IMAGE, ALL_BBOX, base_model)
     
-    # placeholders
-    images = tf.placeholder(tf.float32, [None, 1, 4096])
-    bbox = tf.placeholder(tf.float32, [None, 9])
-    labels = tf.placeholder(tf.float32, [None, 3])
 
-    pred_model = vgg16net(images)
-    #calculate loss
-    loss = find_loss(pred_model, labels)
-    # optimizer
-    train_op = optimizer(loss)
-    saver = tf.train.Saver()
-    # train
-    with tf.Session() as sess:
-        if RESTORE:
-            sess.run(tf.global_variables_initializer())
-        #TODO
-        # for epoch in range(10):
-        #     train_cnn(sess, saver, images, bbox, loss, train_op, ALL_IMAGE, ALL_BBOX)
-        for i in range(epoch):
-            train_cnn(sess, saver, images, labels, loss, train_op, ALL_IMAGE, ALL_LABEL)
-        saver.save(sess, SAVE_PATH)
+    # # placeholders
+    # images = tf.placeholder(tf.float32, [None, 1, 4096])
+    # # bbox = tf.placeholder(tf.float32, [None, 9])
+    # labels = tf.placeholder(tf.float32, [None, 3])
+
+    # pred_model = vgg16net(images)
+    # #calculate loss
+    # loss = find_loss(pred_model, labels)
+    # # optimizer
+    # train_op = optimizer(loss)
+    # saver = tf.train.Saver()
+    # # train
+    # with tf.Session() as sess:
+    #     if RESTORE:
+    #         sess.run(tf.global_variables_initializer())
+    #     #TODO
+    #     # for epoch in range(10):
+    #     #     train_cnn(sess, saver, images, bbox, loss, train_op, ALL_IMAGE, ALL_BBOX)
+    #     for i in range(epoch):
+    #         train_cnn(sess, saver, images, labels, loss, train_op, ALL_IMAGE, ALL_LABEL)
+    #     saver.save(sess, SAVE_PATH)
 
 
-        t_images = tf.placeholder(tf.float32, [None, 1, 4096])
-    #TODO
-        pred_labels = prediction(t_images, pred_model, base_model)
+    test_image_files = glob('deploy/test/*/*_image.jpg')
+    if DEBUG:
+        test_image_files = test_image_files[TEST_START:TEST_START+TEST_DATA_SIZE]
+    TEST_IMAGE = []
+    print("begin loading test data")
+
+    for file in test_image_files:
+        # Read images
+        img = cv2.imread(file)
+        img = cv2.resize(img,(IMGSIZE,IMGSIZE)).astype(np.float32)
+        img -= [103.939, 116.779, 123.68]
+        img = img / 255
+        img = load_pretrained_vgg19_fc2(img, base_model)[0]
+        TEST_IMAGE.append(img)
+
+    TEST_IMAGE = np.reshape(np.array(TEST_IMAGE), (TEST_DATA_SIZE, 4096))
+    # normalize(TEST_IMAGE)
+
+    print(TEST_IMAGE.shape)
+
+
+    # SVM
+    # clf = SVC()
+    # clf = DecisionTreeClassifier()
+    clf = LinearSVC(multi_class="ovr")
+    print('training SVM...')
+    clf.fit(ALL_IMAGE, ALL_LABEL)
+    print('training completed.')
+    pred_labels = clf.predict(TEST_IMAGE)
+    print(pred_labels)
+
+
+    # t_images = tf.placeholder(tf.float32, [None, 1, 4096])
+    
+    # pred_labels = prediction(images, pred_model, base_model, TEST_IMAGE)
 
     # print(pred_labels.shape)
     label_output = ''
     for i in range(TEST_DATA_SIZE):
-        score = pred_labels[3*i:3*i+3]
+        # score = pred_labels[3*i:3*i+3]
         # print(score)
-        idx = np.argmax(score)
+        # idx = np.argmax(score)
+        idx = pred_labels[i]
         label_output += str(test_image_files[i])
         label_output += ',' + str(idx) + '\n'
 
+    label_output = label_output.replace('deploy/test/', '')
+    label_output = label_output.replace('_image.jpg', '')
+
     with open('output.csv', 'w') as f:
         f.write(label_output)
+
+
+
+    # with open('output2.csv', 'r') as f:
+    #     lines = f.read()
+    # lines = lines.split('\n')
+
+    # new_lines = 'guid/image,label\n'
+    # for line in lines[1:-1]:
+    #     if line.split(',')[1] == '0' or line.split(',')[1] == '2':
+    #         s = list(line)
+    #         if randint(0,1) == 1:
+    #             s[-1] = '1'
+    #         line = "".join(s)
+    #     new_lines += line + '\n'
+
+    # with open('output3.csv', 'w') as f:
+    #     f.write(new_lines)
 
 
 
