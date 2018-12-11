@@ -22,6 +22,12 @@ TRAIN_DATA_SIZE = 2000
 TEST_DATA_SIZE = 600
 IMGSIZE = 224
 
+TRAIN_FILE = glob('deploy/trainval/*/*_image.jpg')
+TEST_FILE = glob('deploy/test/*/*_image.jpg')
+TRAIN = 'train'
+VAL = 'val'
+TEST = 'test'
+
 
 def preprocess(img):
 	"Preprocess."
@@ -35,11 +41,6 @@ def preprocess(img):
 def data_load():
 	"Load and preprocess data."
 	# data_dir = 'deploy/'
-	TRAIN_FILE = glob('deploy/trainval/*/*_image.jpg')
-	TEST_FILE = glob('deploy/test/*/*_image.jpg')
-	TRAIN = 'train'
-	VAL = 'val'
-	TEST = 'test'
 
 	# VGG-16 Takes 224x224 images as input, so we resize all of them
 	data_transforms = {
