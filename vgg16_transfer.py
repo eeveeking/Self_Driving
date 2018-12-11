@@ -14,13 +14,15 @@ import os
 import copy
 from glob import glob
 import cv2
+from random import randint
 
 
 DEBUG = 0
 VAL_DATA_SIZE = 30
 TRAIN_DATA_SIZE = 100
 TEST_DATA_SIZE = 30
-IMGSIZE = 224
+IMGSIZE = 256
+CROPSIZE = 224
 
 TRAIN_FILE = glob('deploy/trainval/*/*_image.jpg')
 TEST_FILE = glob('deploy/test/*/*_image.jpg')
@@ -32,12 +34,15 @@ TEST = 'test'
 def preprocess(img):
 	"Preprocess."
 	img = cv2.resize(img,(IMGSIZE,IMGSIZE)).astype(np.float32)
-	img -= [103.939, 116.779, 123.68]
-	img = img / 255
+	randx = randint(0,32)
+	randy = randint(0,32)
+	crop_img = img[randx:randx+CROPSIZE, randy:randy+CROPSIZE]
+	crop_img -= [103.939, 116.779, 123.68]
+	crop_img = crop_img / 255
 
-	img = np.einsum('ijk->kji', img)
-	# print(img.shape)
-	return img
+	crop_img = np.einsum('ijk->kji', crop_img)
+	# print(crop_img.shape)
+	return crop_img
 
 
 def data_load():
