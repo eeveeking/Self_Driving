@@ -16,10 +16,10 @@ from glob import glob
 import cv2
 
 
-DEBUG = 1
-VAL_DATA_SIZE = 600
-TRAIN_DATA_SIZE = 2000
-TEST_DATA_SIZE = 600
+DEBUG = 0
+VAL_DATA_SIZE = 30
+TRAIN_DATA_SIZE = 100
+TEST_DATA_SIZE = 30
 IMGSIZE = 224
 
 TRAIN_FILE = glob('deploy/trainval/*/*_image.jpg')
@@ -35,10 +35,14 @@ def preprocess(img):
 	img -= [103.939, 116.779, 123.68]
 	img = img / 255
 
+	img = np.einsum('ijk->kji', img)
+	# print(img.shape)
 	return img
 
 
 def data_load():
+	TRAIN_FILE = glob('deploy/trainval/*/*_image.jpg')
+	TEST_FILE = glob('deploy/test/*/*_image.jpg')
 	"Load and preprocess data."
 	# data_dir = 'deploy/'
 
@@ -68,21 +72,27 @@ def data_load():
 		VAL_FILE = TRAIN_FILE[5000:5000+VAL_DATA_SIZE]
 		TRAIN_FILE = TRAIN_FILE[:TRAIN_DATA_SIZE]
 		TEST_FILE = TEST_FILE[1000:1000+TEST_DATA_SIZE]
+	else:
+		VAL_FILE = TRAIN_FILE[:2]
 
-    # Read labels
-    with open('labels.csv', 'r') as f:
-        lines = f.readlines()
-    lines = [line.rstrip('\n') for line in lines]
-    ALL_LABEL = []
-    for line in lines[1:]:
-        # TEMP_LABEL = [0,0,0]
-        # TEMP_LABEL[int(line.split(',')[1])] = 1
-        # TEMP_LABEL[randint(0,2)] = 1
-        ALL_LABEL.append(int(line.split(',')[1]))
-    ALL_LABEL = np.array(ALL_LABEL)
-    if DEBUG:
-        TRAIN_LABEL = ALL_LABEL[:TRAIN_DATA_SIZE]
+	# Read labels
+	with open('labels.csv', 'r') as f:
+		lines = f.readlines()
+	lines = [line.rstrip('\n') for line in lines]
+	ALL_LABEL = []
+	for line in lines[1:]:
+		# TEMP_LABEL = [0,0,0]
+		# TEMP_LABEL[int(line.split(',')[1])] = 1
+		# TEMP_LABEL[randint(0,2)] = 1
+		ALL_LABEL.append(int(line.split(',')[1]))
+	ALL_LABEL = np.array(ALL_LABEL)
+	if DEBUG:
+		TRAIN_LABEL = ALL_LABEL[:TRAIN_DATA_SIZE]
 		VAL_LABEL = ALL_LABEL[5000:5000+VAL_DATA_SIZE]
+		print(len(TRAIN_FILE))
+	else:
+		TRAIN_LABEL = ALL_LABEL
+		VAL_LABEL = ALL_LABEL[:2]
 
 	image_datasets = {}
 	print("Preprocessing...")
@@ -105,8 +115,10 @@ def data_load():
 			image_datasets[x], batch_size=8,
 			shuffle=True, num_workers=4
 		)
-		for x in [TRAIN, VAL, TEST]
+		for x in [TRAIN, VAL]
 	}
+
+	dataloaders[TEST] = torch.utils.data.DataLoader(image_datasets[TEST], batch_size=8, shuffle=False, num_workers=4)
 
 	dataset_sizes = {x: len(image_datasets[x]) for x in [TRAIN, VAL, TEST]}
 
@@ -116,10 +128,10 @@ def data_load():
 	# print("Classes: ")
 	# class_names = image_datasets[TRAIN].classes
 	# print(image_datasets[TRAIN].classes)
-	return dataloaders
+	return dataloaders, dataset_sizes
 
 
-def eval_model(vgg, criterion):
+def eval_model(vgg, criterion, use_gpu, dataloaders):
 	"This helper function will give us the accuracy of our model on the test set."
 	since = time.time()
 	avg_loss = 0
@@ -131,39 +143,49 @@ def eval_model(vgg, criterion):
 	print("Evaluating model")
 	print('-' * 10)
 
+	res = []
+
 	for i, data in enumerate(dataloaders[TEST]):
 		if i % 100 == 0:
 			print("\rTest batch {}/{}".format(i, test_batches), end='', flush=True)
 
 		vgg.train(False)
 		vgg.eval()
-		inputs, labels = data
+		# inputs, labels = data
+		inputs = data
 
 		if use_gpu:
-			inputs, labels = Variable(inputs.cuda(), volatile=True), Variable(labels.cuda(), volatile=True)
+			# inputs, labels = Variable(inputs.cuda(), volatile=True), Variable(labels.cuda(), volatile=True)
+			inputs = Variable(inputs.cuda(), volatile=True)
 		else:
-			inputs, labels = Variable(inputs, volatile=True), Variable(labels, volatile=True)
+			# inputs, labels = Variable(inputs, volatile=True), Variable(labels, volatile=True)
+			inputs = Variable(inputs, volatile=True)
 
 		outputs = vgg(inputs)
 
 		_, preds = torch.max(outputs.data, 1)
-		loss = criterion(outputs, labels)
+		
+		res += preds.tolist()
 
-		loss_test += loss.data[0]
-		acc_test += torch.sum(preds == labels.data)
+		# loss = criterion(outputs, labels)
 
-		del inputs, labels, outputs, preds
+		# loss_test += loss.item()
+		# acc_test += torch.sum(preds == labels.data)
+
+		del inputs, outputs, preds
 		torch.cuda.empty_cache()
 
-	avg_loss = loss_test / dataset_sizes[TEST]
-	avg_acc = acc_test / dataset_sizes[TEST]
+	# avg_loss = loss_test / dataset_sizes[TEST]
+	# avg_acc = acc_test / dataset_sizes[TEST]
 
 	elapsed_time = time.time() - since
 	print()
-	print("Evaluation completed in {:.0f}m {:.0f}s".format(elapsed_time // 60, elapsed_time % 60))
-	print("Avg loss (test): {:.4f}".format(avg_loss))
-	print("Avg acc (test): {:.4f}".format(avg_acc))
+	# print("Evaluation completed in {:.0f}m {:.0f}s".format(elapsed_time // 60, elapsed_time % 60))
+	# print("Avg loss (test): {:.4f}".format(avg_loss))
+	# print("Avg acc (test): {:.4f}".format(avg_acc))
 	print('-' * 10)
+
+	return res
 
 
 def load_vgg16():
@@ -187,7 +209,7 @@ def load_vgg16():
 	return vgg16
 
 
-def train_model(vgg, criterion, optimizer, scheduler, dataloaders, num_epochs=10):
+def train_model(vgg, criterion, optimizer, scheduler, dataloaders, use_gpu, dataset_sizes, num_epochs=10):
 	"Train model."
 	since = time.time()
 	best_model_wts = copy.deepcopy(vgg.state_dict())
@@ -217,11 +239,13 @@ def train_model(vgg, criterion, optimizer, scheduler, dataloaders, num_epochs=10
 				print("\rTraining batch {}/{}".format(i, train_batches / 2), end='', flush=True)
 
 			# Use half training dataset
-			if i >= train_batches / 2:
-				break
+			# if i >= train_batches / 2:
+			# 	break
 
 			inputs, labels = data
 
+			# print(type(inputs))
+			# print(inputs.size())
 			if use_gpu:
 				inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
 			else:
@@ -231,22 +255,27 @@ def train_model(vgg, criterion, optimizer, scheduler, dataloaders, num_epochs=10
 
 			outputs = vgg(inputs)
 
+			# print(outputs)
+
 			_, preds = torch.max(outputs.data, 1)
 			loss = criterion(outputs, labels)
 
 			loss.backward()
 			optimizer.step()
 
-			loss_train += loss.data[0]
+			loss_train += loss.item()
+			# print(preds, labels.data, torch.sum(preds == labels.data))
 			acc_train += torch.sum(preds == labels.data)
+			print(preds, labels.data)
 
 			del inputs, labels, outputs, preds
 			torch.cuda.empty_cache()
 
 		print()
 		# * 2 as we only used half of the dataset
-		avg_loss = loss_train * 2 / dataset_sizes[TRAIN]
-		avg_acc = acc_train * 2 / dataset_sizes[TRAIN]
+		avg_loss = loss_train / dataset_sizes[TRAIN]
+		avg_acc = int(acc_train) / dataset_sizes[TRAIN]
+		print(avg_acc)
 
 		vgg.train(False)
 		vgg.eval()
@@ -269,14 +298,14 @@ def train_model(vgg, criterion, optimizer, scheduler, dataloaders, num_epochs=10
 			_, preds = torch.max(outputs.data, 1)
 			loss = criterion(outputs, labels)
 
-			loss_val += loss.data[0]
+			loss_val += loss.item()
 			acc_val += torch.sum(preds == labels.data)
 
 			del inputs, labels, outputs, preds
 			torch.cuda.empty_cache()
 
 		avg_loss_val = loss_val / dataset_sizes[VAL]
-		avg_acc_val = acc_val / dataset_sizes[VAL]
+		avg_acc_val = int(acc_val) / dataset_sizes[VAL]
 
 		print()
 		print("Epoch {} result: ".format(epoch))
@@ -307,7 +336,7 @@ def main():
 	if use_gpu:
 		print("Using CUDA")
 
-	dataloaders = data_load()
+	dataloaders, dataset_sizes = data_load()
 
 	vgg16 = load_vgg16()
 
@@ -327,9 +356,22 @@ def main():
 	optimizer_ft = optim.SGD(vgg16.parameters(), lr=0.001, momentum=0.9)
 	exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
-	vgg16 = train_model(vgg16, criterion, optimizer_ft, exp_lr_scheduler, dataloaders, num_epochs=2)
+	vgg16 = train_model(vgg16, criterion, optimizer_ft, exp_lr_scheduler, dataloaders, use_gpu, dataset_sizes, num_epochs=1)
 	torch.save(vgg16.state_dict(), 'VGG16_v2-OCT_Retina_half_dataset.pt')
 
+	res = eval_model(vgg16, criterion, use_gpu, dataloaders)
+	print(res)
+
+	label_output = 'guid/image,label' + '\n'
+	for i in range(len(res)):
+		label_output += str(TEST_FILE[i])
+		label_output += ',' + str(res[i]) + '\n'
+
+	label_output = label_output.replace('deploy/test/', '')
+	label_output = label_output.replace('_image.jpg', '')
+
+	with open('output.csv', 'w') as f:
+		f.write(label_output)
 
 
 if __name__ == '__main__':
