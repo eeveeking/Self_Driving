@@ -70,17 +70,13 @@ def data_load():
 	CUR_LABEL_LEN = len(ALL_LABEL)
 	for idx in range(CUR_LABEL_LEN):
 		if ALL_LABEL[idx] == 2:
-			TRAIN_FILE.append(TRAIN_FILE[idx])
-			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
+			if randint(0,1) == 1:
+				TRAIN_FILE.append(TRAIN_FILE[idx])
+				ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
 		elif ALL_LABEL[idx] == 0:
-			TRAIN_FILE.append(TRAIN_FILE[idx])
-			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
-			TRAIN_FILE.append(TRAIN_FILE[idx])
-			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
-			TRAIN_FILE.append(TRAIN_FILE[idx])
-			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
-			TRAIN_FILE.append(TRAIN_FILE[idx])
-			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
+			if randint(0,1) == 1:
+				TRAIN_FILE.append(TRAIN_FILE[idx])
+				ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
 
 	print(len(TRAIN_FILE), len(ALL_LABEL))
 	# VGG-16 Takes 224x224 images as input, so we resize all of them
