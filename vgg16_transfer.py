@@ -48,9 +48,41 @@ def preprocess(img):
 def data_load():
 	TRAIN_FILE = glob('deploy/trainval/*/*_image.jpg')
 	TEST_FILE = glob('deploy/test/*/*_image.jpg')
+
 	"Load and preprocess data."
 	# data_dir = 'deploy/'
 
+	# Read labels
+	with open('labels.csv', 'r') as f:
+		lines = f.readlines()
+	lines = [line.rstrip('\n') for line in lines]
+
+	ALL_LABEL = []
+	for line in lines[1:]:
+		# TEMP_LABEL = [0,0,0]
+		# TEMP_LABEL[int(line.split(',')[1])] = 1
+		# TEMP_LABEL[randint(0,2)] = 1
+		ALL_LABEL.append(int(line.split(',')[1]))
+	ALL_LABEL = np.array(ALL_LABEL)
+
+	print(len(TRAIN_FILE), len(ALL_LABEL))
+
+	CUR_LABEL_LEN = len(ALL_LABEL)
+	for idx in range(CUR_LABEL_LEN):
+		if ALL_LABEL[idx] == 2:
+			TRAIN_FILE.append(TRAIN_FILE[idx])
+			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
+		elif ALL_LABEL[idx] == 0:
+			TRAIN_FILE.append(TRAIN_FILE[idx])
+			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
+			TRAIN_FILE.append(TRAIN_FILE[idx])
+			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
+			TRAIN_FILE.append(TRAIN_FILE[idx])
+			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
+			TRAIN_FILE.append(TRAIN_FILE[idx])
+			ALL_LABEL = np.append(ALL_LABEL, ALL_LABEL[idx])
+
+	print(len(TRAIN_FILE), len(ALL_LABEL))
 	# VGG-16 Takes 224x224 images as input, so we resize all of them
 	data_transforms = {
 		TRAIN: transforms.Compose([
@@ -80,17 +112,7 @@ def data_load():
 	else:
 		VAL_FILE = TRAIN_FILE[:2]
 
-	# Read labels
-	with open('labels.csv', 'r') as f:
-		lines = f.readlines()
-	lines = [line.rstrip('\n') for line in lines]
-	ALL_LABEL = []
-	for line in lines[1:]:
-		# TEMP_LABEL = [0,0,0]
-		# TEMP_LABEL[int(line.split(',')[1])] = 1
-		# TEMP_LABEL[randint(0,2)] = 1
-		ALL_LABEL.append(int(line.split(',')[1]))
-	ALL_LABEL = np.array(ALL_LABEL)
+
 	if DEBUG:
 		TRAIN_LABEL = ALL_LABEL[:TRAIN_DATA_SIZE]
 		VAL_LABEL = ALL_LABEL[5000:5000+VAL_DATA_SIZE]
@@ -101,6 +123,7 @@ def data_load():
 
 	image_datasets = {}
 	print("Preprocessing...")
+	
 	image_datasets[TRAIN] = [(preprocess(cv2.imread(TRAIN_FILE[idx])), TRAIN_LABEL[idx]) for idx in range(len(TRAIN_FILE))]
 	image_datasets[VAL] = [(preprocess(cv2.imread(VAL_FILE[idx])), VAL_LABEL[idx]) for idx in range(len(VAL_FILE))]
 	image_datasets[TEST] = [preprocess(cv2.imread(fname)) for fname in TEST_FILE]
@@ -242,6 +265,8 @@ def train_model(vgg, criterion, optimizer, scheduler, dataloaders, use_gpu, data
 		for i, data in enumerate(dataloaders[TRAIN]):
 			if i % 100 == 0:
 				print("\rTraining batch {}/{}".format(i, train_batches / 2), end='', flush=True)
+				if i > 0:
+					print("Accuracy so far:", int(acc_train)/(i*8))
 
 			# Use half training dataset
 			# if i >= train_batches / 2:
