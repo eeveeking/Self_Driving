@@ -6,5 +6,5 @@ We implemented this task using VGG16 transfer learning. The detailed information
 
 ## How to run the code
 1. Clone this repository.
-2. Download the pre-trained weight vgg16_bn.pth from Kaggle. Put vgg16_bn.pth and the cloned repo in a same directory.
+2. Download the pre-trained weight vgg16_bn.pth from Kaggle. Put vgg16_bn.pth and the cloned repo in a same directory, and copy the given deploy/ folder into the cloned repo.
 3. Run vgg16_transfer.py 
